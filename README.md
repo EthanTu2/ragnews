@@ -16,7 +16,7 @@
 
 Before proceeding, check that you have the following installed:
 
-- Python 3.9+
+- Python 3.8 or 3.9
 - A Groq API key (instructions below)
 
 # Installation

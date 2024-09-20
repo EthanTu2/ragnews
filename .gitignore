@@ -8,6 +8,3 @@ venv
 ragnews(old).py
 test.py
 inclass.py
-.gitmodules
-ragnews/__pycache__/ragnews.cpython-312.pyc
-ragnews/__pycache__/ragnews2.cpython-312.pyc
