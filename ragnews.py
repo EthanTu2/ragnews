@@ -7,16 +7,13 @@ New articles can be added to the database with the --add_url parameter,
 and the path to the database can be changed with the --db parameter.
 '''
 
-#from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 import datetime
 import logging
 import re
-#import requests
 import sqlite3
 
 import groq
-#import metahtml
 
 from groq import Groq
 import os
@@ -53,7 +50,7 @@ def run_llm(system, user, model='llama3-8b-8192', seed=None):
 
 
 def summarize_text(text, seed=None):
-    system = 'Summarize the input text below.  Limit the summary to 1 paragraph.  Use an advanced reading level similar to the input text, and ensure that all people, places, and other proper and dates nouns are included in the summary.  The summary should be in English.'
+    system = 'Summarize the input text below.  Limit the summary to 1 paragraph.  Use an advanced reading level similar to the input text, and ensure that all people, places, and other proper and dates nouns are included in the summary.  The summary should be in English. Only include the summary.'
     return run_llm(system, text, seed=seed)
 
 
@@ -61,6 +58,20 @@ def translate_text(text):
     system = 'You are a professional translator working for the United Nations.  The following document is an important news article that needs to be translated into English.  Provide a professional translation.'
     return run_llm(system, text)
 
+def keywords_fixer(text, seed=None):
+        if not isinstance(text, str):
+            raise ValueError("Input must be a string of keywords.")
+        
+        system = """
+        The text input should be a string of keywords separated by spaces. 
+        If there are more than 10 words in the string, remove half of them and return the remaining string. 
+        Prioritize removing keywords that are not real words or contain hyphens (-) or underscores (_). 
+        Do not remove dates or names.
+        Only provide the new string of keywords with spaces between each words.
+        Do not add any extra details, opinions, or unnecessary explanations.
+        Stop responding after providing the new string.
+        """
+        return run_llm(system, text, seed=seed)
 
 def extract_keywords(text, seed=None):
     r'''
@@ -69,23 +80,27 @@ def extract_keywords(text, seed=None):
     this function extracts the keywords that will be used to perform the search for articles that will be used in RAG.
 
     >>> extract_keywords('Who is the current democratic presidential nominee?', seed=0)
-    'Joe candidate nominee presidential Democrat election primary TBD voting politics'
+    'Democratic nominee 2024'
     >>> extract_keywords('What is the policy position of Trump related to illegal Mexican immigrants?', seed=0)
-    'Trump Mexican immigrants policy position illegal border control deportation walls'
-
-    Note that the examples above are passing in a seed value for deterministic results.
-    In production, you probably do not want to specify the seed.
+    'Trump Mexico immigration policy'
     '''
 
-    # FIXME:
-    # Implement this function.
-    # It's okay if you don't get the exact same keywords as me.
-    # You probably certainly won't because you probably won't come up with the exact same prompt as me.
-    # To make the test cases above pass,
-    # you'll have to modify them to be what the output of your prompt provides.
-    system = 'Find keywords relevant to the text that will be used to search for articles that will be used in RAG.'
-    return run_llm(system, text, seed=seed)
-
+    system = """
+    Do not answer the question. 
+    Only provide a string of as few of the top keywords relevant to the topic that would benefit a search for articles online relating to the question. 
+    Separate each keyword with a space. 
+    Prioritize names and dates in the string of keywords.
+    Follow these rules:
+    1. Preserve numbers and special characters, but ensure that they are formatted correctly to avoid issues in a query.
+    2. Escape or format any special characters (like single quotes, apostrophes, etc.) that could cause problems in a query.
+    3. Return the keywords as a single string, formatted such that numbers and special characters do not break any query syntax.
+    For example, if the question is: 'What is Trump's immigration policy regarding illegal Mexican immigrants?', an acceptable output would be: Trump Mexico immigration policy.
+    Another example, if the question is: 'Who is the current democratic presidential nominee?' , an acceptable output would be: Democratic nominee 2024.
+    """
+    #"Do not answer the question. Solely provide a string of as few of the top keywords relevant to the topic that would benefit a search for articles online relating to the question. Separate each keyword with a space. For example, Who is the current democratic presidential nominee? An excellent output would be: Democratic nominee 2024 election Biden Harris politics"
+    keywords = run_llm(system, text, seed=seed)
+    return keywords
+    #return keywords_fixer(keywords)
 
 
 ################################################################################
@@ -121,22 +136,33 @@ def rag(text, db):
     '''
     This function uses retrieval augmented generation (RAG) to generate an LLM response to the input text.
     The db argument should be an instance of the `ArticleDB` class that contains the relevant documents to use.
-    '''
 
-    # FIXME:
-    # Implement this function.
-    # Recall that your RAG system should:
-    # 1. Extract keywords from the text.
-    # 2. Use those keywords to find articles related to the text.
-    # 3. Construct a new user prompt that includes all of the articles and the original text.
-    # 4. Pass the new prompt to the LLM and return the result.
-    #
-    # HINT:
-    # You will also have to write your own system prompt to use with the LLM.
-    # I needed a fairly long system prompt (about 15 lines) in order to get good results.
-    # You can start with a basic system prompt right away just to check if things are working,
-    # but don't spend a lot of time on the system prompt until you're sure everything else is working.
-    # Then, you can iteratively add more commands into the system prompt to correct "bad" behavior you see in your program's output.
+    NOTE:
+    There are no test cases because:
+    1. the answers are non-deterministic (both because of the LLM and the database), and
+    2. evaluating the quality of answers automatically is non-trivial.
+    '''
+    keywords = extract_keywords(text)
+    sanitized_keywords = keywords.replace("'", "''")
+    print(f"Keywords: {keywords}")  # Debug the keywords
+    articles = db.find_articles(sanitized_keywords, limit=10, timebias_alpha=1)
+    print(f"Retrieved {len(articles)} articles")
+    system = """You are a professional news analyst tasked with answering questions based solely on the provided articles. 
+    Your responses should be concise, accurate, and directly address the question. 
+    Summarize key information from the articles clearly in at most three sentences. 
+    Do not add any extra details, opinions, or unnecessary explanations. 
+    Do not include the source of your information or say anything related to 'according to the article'. 
+    Stop responding once you have provided the necessary answer. \n\n"""
+
+    string_articles = ""
+    for article in articles:
+        string_articles += (f"Title: {article['title']}\nContent: {article['text'][:1000]}\n\n")
+    string_articles = summarize_text(translate_text(string_articles))
+    system+=string_articles
+    system += f"User query: {text}"
+
+    return run_llm(system, text)
+    
 
 
 class ArticleDB:
@@ -232,6 +258,36 @@ class ArticleDB:
         # The details of the SELECT statement will be different
         # (because the functions collect different information)
         # but the outline of the python code is the same.
+        
+        db = sqlite3.connect('ragnews.db')
+        cursor = db.cursor()
+
+        sanitized_query = query.replace("'", "''")  # Escapes single quotes
+
+        sql = '''
+        SELECT title, text, bm25(articles) AS rank
+        FROM articles
+        WHERE articles MATCH ?
+        ORDER BY rank
+        LIMIT ?;
+        '''
+        
+        articles = []
+        try:
+            cursor.execute(sql, (sanitized_query, limit))
+            rows = cursor.fetchall()
+            for row in rows:
+                articles.append({
+                    'title': row[0],
+                    'text': row[1]
+                })
+        except sqlite3.OperationalError as e:
+            print(f"SQLite error: {e}")
+            rows = []
+        finally:
+            db.close()
+        
+        return articles
 
     @_catch_errors
     def add_url(self, url, recursive_depth=0, allow_dupes=False):
@@ -255,6 +311,9 @@ class ArticleDB:
         3
 
         '''
+        from bs4 import BeautifulSoup
+        import requests
+        import metahtml
         logging.info(f'add_url {url}')
 
         if not allow_dupes:
