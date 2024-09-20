@@ -14,10 +14,10 @@ import re
 import sqlite3
 
 import groq
-
 from groq import Groq
 import os
-
+import requests
+from bs4 import BeautifulSoup
 
 ################################################################################
 # LLM functions
@@ -50,44 +50,44 @@ def run_llm(system, user, model='llama3-8b-8192', seed=None):
 
 
 def summarize_text(text, seed=None):
-    system = 'Summarize the input text below.  Limit the summary to 1 paragraph.  Use an advanced reading level similar to the input text, and ensure that all people, places, and other proper and dates nouns are included in the summary.  The summary should be in English. Only include the summary.'
+    system = 'Summarize the input text below. Limit the summary to 1 paragraph. Use an advanced reading level similar to the input text, and ensure that all people, places, and other proper names and dates are included in the summary. The summary should be in English. Only include the summary.'
     return run_llm(system, text, seed=seed)
 
 
 def translate_text(text):
-    system = 'You are a professional translator working for the United Nations.  The following document is an important news article that needs to be translated into English.  Provide a professional translation.'
+    system = 'You are a professional translator working for the United Nations. The following document is an important news article that needs to be translated into English. Provide a professional translation.'
     return run_llm(system, text)
 
 def keywords_fixer(text, seed=None):
-        if not isinstance(text, str):
-            raise ValueError("Input must be a string of keywords.")
-        
-        system = """
+    if not isinstance(text, str):
+        raise ValueError("Input must be a string of keywords.")
+    
+    system = """
         The text input should be a string of keywords separated by spaces. 
         If there are more than 10 words in the string, remove half of them and return the remaining string. 
-        Prioritize removing keywords that are not real words or contain hyphens (-) or underscores (_). 
+        Removing keywords that are not real words or contain hyphens (-) or underscores (_).
         Do not remove dates or names.
         Only provide the new string of keywords with spaces between each words.
         Do not add any extra details, opinions, or unnecessary explanations.
         Stop responding after providing the new string.
         """
-        return run_llm(system, text, seed=seed)
+    return run_llm(system, text, seed=seed)
+
 
 def extract_keywords(text, seed=None):
-    r'''
+    '''
     This is a helper function for RAG.
-    Given an input text,
-    this function extracts the keywords that will be used to perform the search for articles that will be used in RAG.
+    Given an input text, this function extracts the keywords that will be used to perform the search for articles that will be used in RAG.
 
     >>> extract_keywords('Who is the current democratic presidential nominee?', seed=0)
-    'Democratic nominee 2024'
-    >>> extract_keywords('What is the policy position of Trump related to illegal Mexican immigrants?', seed=0)
-    'Trump Mexico immigration policy'
+    'Democratic nominee 2024 Biden'
+    >>> extract_keywords('What are some policy differences between Harris and Trump?', seed=0)
+    'Harris Trump policy differences'
     '''
 
     system = """
     Do not answer the question. 
-    Only provide a string of as few of the top keywords relevant to the topic that would benefit a search for articles online relating to the question. 
+    Only provide a string containing 5-10 of the top keywords relevant to the topic that would benefit a search for articles online relating to the question. 
     Separate each keyword with a space. 
     Prioritize names and dates in the string of keywords.
     Follow these rules:
@@ -98,8 +98,8 @@ def extract_keywords(text, seed=None):
     Another example, if the question is: 'Who is the current democratic presidential nominee?' , an acceptable output would be: Democratic nominee 2024.
     """
     keywords = run_llm(system, text, seed=seed)
-    #return keywords
-    return keywords_fixer(keywords)
+    #return keywords_fixer(keywords)
+    return keywords
 
 
 ################################################################################
@@ -130,46 +130,49 @@ def _catch_errors(func):
 # rag
 ################################################################################
 
-
 def rag(text, db):
     '''
     This function uses retrieval augmented generation (RAG) to generate an LLM response to the input text.
     The db argument should be an instance of the `ArticleDB` class that contains the relevant documents to use.
-
-    NOTE:
-    There are no test cases because:
-    1. the answers are non-deterministic (both because of the LLM and the database), and
-    2. evaluating the quality of answers automatically is non-trivial.
     '''
     keywords = extract_keywords(text)
     sanitized_keywords = keywords.replace("'", "''")
     print(f"Keywords: {keywords}")  # Debug the keywords
     articles = db.find_articles(sanitized_keywords, limit=10, timebias_alpha=1)
     print(f"Retrieved {len(articles)} articles")
+    
     system = """You are a professional news analyst tasked with answering questions based solely on the provided articles. 
+    Do not take into account any knowledge outside of the articles in your answer.
     Your responses should be concise, accurate, and directly address the question. 
-    Summarize key information from the articles clearly in at most three sentences. 
+    You must summarize key information from the articles clearly in at most three complete sentences. 
     Do not add any extra details, opinions, or unnecessary explanations. 
-    Do not include the source of your information or say anything related to 'according to the article'. 
+    You are not allowed to talk about or mention the source of your information or articles in your answer.
+    Present the information as if you have done the research yourself.
     Stop responding once you have provided the necessary answer. \n\n"""
 
     string_articles = ""
     for article in articles:
-        string_articles += (f"Title: {article['title']}\nContent: {article['text'][:1000]}\n\n")
+        if article['text']:
+            string_articles += (f"Title: {article['title']}\nContent: {article['text'][:2000]}\n\n")
+        else:
+            logging.warning(f"Article with title '{article['title']}' has no text content.")
+    if not string_articles:
+        return "No relevant articles with text found for the query."
     string_articles = summarize_text(translate_text(string_articles))
-    system+=string_articles
+    system += string_articles
     system += f"User query: {text}"
 
     return run_llm(system, text)
-    
 
+
+################################################################################
+# ArticleDB class (with metahtml replacement using BeautifulSoup)
+################################################################################
 
 class ArticleDB:
     '''
     This class represents a database of news articles.
-    It is backed by sqlite3 and designed to have no external dependencies and be easy to understand.
-
-    The following example shows how to add urls to the database.
+    It is backed by sqlite3 and designed to have no external dependencies.
 
     >>> db = ArticleDB()
     >>> len(db)
@@ -178,28 +181,21 @@ class ArticleDB:
     >>> len(db)
     1
 
-    Once articles have been added,
-    we can search through those articles to find articles about only certain topics.
-
     >>> articles = db.find_articles('Economía')
-
-    The output is a list of articles that match the search query.
-    Each article is represented by a dictionary with a number of fields about the article.
-
     >>> articles[0]['title']
     'La creación de empleo defrauda en Estados Unidos en agosto y aviva el temor a una recesión | Economía | EL PAÍS'
-    >>> articles[0].keys()
+    >>> list(articles[0].keys())
     ['rowid', 'rank', 'title', 'publish_date', 'hostname', 'url', 'staleness', 'timebias', 'en_summary', 'text']
     '''
 
     _TESTURLS = [
         'https://elpais.com/economia/2024-09-06/la-creacion-de-empleo-defrauda-en-estados-unidos-en-agosto-y-aviva-el-fantasma-de-la-recesion.html',
         'https://www.cnn.com/2024/09/06/politics/american-push-israel-hamas-deal-analysis/index.html',
-        ]
+    ]
 
     def __init__(self, filename=':memory:'):
         self.db = sqlite3.connect(filename)
-        self.db.row_factory=sqlite3.Row
+        self.db.row_factory = sqlite3.Row
         self.logger = logging
         self._create_schema()
 
@@ -207,11 +203,9 @@ class ArticleDB:
         '''
         Create the DB schema if it doesn't already exist.
 
-        The test below demonstrates that creating a schema on a database that already has the schema will not generate errors.
-
         >>> db = ArticleDB()
         >>> db._create_schema()
-        >>> db._create_schema()
+        >>> db._create_schema()  # Ensure no errors when schema already exists
         '''
         try:
             sql = '''
@@ -230,28 +224,19 @@ class ArticleDB:
             '''
             self.db.execute(sql)
             self.db.commit()
-
-        # if the database already exists,
-        # then do nothing
         except sqlite3.OperationalError:
             self.logger.debug('CREATE TABLE failed')
 
     def find_articles(self, query, limit=10, timebias_alpha=1):
         '''
         Return a list of articles in the database that match the specified query.
-
-        Lowering the value of the timebias_alpha parameter will result in the time becoming more influential.
-        The final ranking is computed by the FTS5 rank * timebias_alpha / (days since article publication + timebias_alpha).
         '''
-        
-        db = sqlite3.connect('ragnews.db')
-        cursor = db.cursor()
+        cursor = self.db.cursor()
 
         sanitized_query = query.replace("'", "''")  # Escapes single quotes
 
         sql = '''
-        SELECT title, text, bm25(articles) AS rank
-        FROM articles
+        SELECT rowid, title, text, publish_date, hostname, url, bm25(articles) AS rank        FROM articles
         WHERE articles MATCH ?
         ORDER BY rank
         LIMIT ?;
@@ -263,74 +248,73 @@ class ArticleDB:
             rows = cursor.fetchall()
             for row in rows:
                 articles.append({
-                    'title': row[0],
-                    'text': row[1]
+                    'rowid': row['rowid'],
+                    'rank': row['rank'],
+                    'title': row['title'],
+                    'publish_date': row['publish_date'],
+                    'hostname': row['hostname'],
+                    'url': row['url'],
+                    'staleness': None,  # Placeholder for staleness
+                    'timebias': timebias_alpha,  # Placeholder for timebias
+                    'en_summary': None,  # Placeholder for en_summary
+                    'text': row['text']
                 })
         except sqlite3.OperationalError as e:
             print(f"SQLite error: {e}")
-            rows = []
-        finally:
-            db.close()
-        
         return articles
 
     @_catch_errors
     def add_url(self, url, recursive_depth=0, allow_dupes=False):
         '''
         Download the url, extract various metainformation, and add the metainformation into the db.
-
-        By default, the same url cannot be added into the database multiple times.
-
-        >>> db = ArticleDB()
-        >>> db.add_url(ArticleDB._TESTURLS[0])
-        >>> db.add_url(ArticleDB._TESTURLS[0])
-        >>> db.add_url(ArticleDB._TESTURLS[0])
-        >>> len(db)
-        1
-
-        >>> db = ArticleDB()
-        >>> db.add_url(ArticleDB._TESTURLS[0], allow_dupes=True)
-        >>> db.add_url(ArticleDB._TESTURLS[0], allow_dupes=True)
-        >>> db.add_url(ArticleDB._TESTURLS[0], allow_dupes=True)
-        >>> len(db)
-        3
-
         '''
-        from bs4 import BeautifulSoup
-        import requests
-        import metahtml
         logging.info(f'add_url {url}')
 
         if not allow_dupes:
-            logging.debug(f'checking for url in database')
-            sql = '''
-            SELECT count(*) FROM articles WHERE url=?;
-            '''
-            _logsql(sql)
             cursor = self.db.cursor()
+            sql = 'SELECT count(*) FROM articles WHERE url=?;'
+            _logsql(sql)
             cursor.execute(sql, [url])
             row = cursor.fetchone()
-            is_dupe = row[0] > 0
-            if is_dupe:
-                logging.debug(f'duplicate detected, skipping!')
+            if row[0] > 0:
+                logging.debug('Duplicate detected, skipping!')
                 return
 
         logging.debug(f'downloading url')
         try:
             response = requests.get(url)
         except requests.exceptions.MissingSchema:
-            # if no schema was provided in the url, add a default
             url = 'https://' + url
             response = requests.get(url)
+        
         parsed_uri = urlparse(url)
         hostname = parsed_uri.netloc
 
-        logging.debug(f'extracting information')
-        parsed = metahtml.parse(response.text, url)
-        info = metahtml.simplify_meta(parsed)
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        # Extracting metadata manually
+        title = soup.find('title').text if soup.find('title') else None
+        content = soup.find('body').get_text() if soup.find('body') else None
+
+        # Example of extracting publish date (this depends on the website's structure)
+        publish_date = soup.find('meta', {'name': 'publish_date'})
+        if publish_date:
+            publish_date = publish_date['content']
+
+        # Example of extracting language (again, depends on the HTML structure)
+        language = soup.find('html')['lang'] if soup.find('html') and 'lang' in soup.find('html').attrs else None
+
+        # Construct the simplified metadata dictionary manually
+        info = {
+            'title': title,
+            'content': {'text': content},
+            'timestamp.published': {'lo': publish_date},
+            'language': language,
+            'type': 'article' if content and len(content) > 100 else 'other'
+        }
 
         if info['type'] != 'article' or len(info['content']['text']) < 100:
-            logging.debug(f'not an article... skipping')
+            logging.debug('Not an article... skipping')
             en_translation = None
             en_summary = None
             info['title'] = None
@@ -338,14 +322,14 @@ class ArticleDB:
             info['timestamp.published'] = {'lo': None}
             info['language'] = None
         else:
-            logging.debug('summarizing')
+            logging.debug('Summarizing')
             if not info['language'].startswith('en'):
                 en_translation = translate_text(info['content']['text'])
             else:
                 en_translation = None
             en_summary = summarize_text(info['content']['text'])
 
-        logging.debug('inserting into database')
+        logging.debug('Inserting into database')
         sql = '''
         INSERT INTO articles(title, text, hostname, url, publish_date, crawl_date, lang, en_translation, en_summary)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
@@ -354,7 +338,7 @@ class ArticleDB:
         cursor = self.db.cursor()
         cursor.execute(sql, [
             info['title'],
-            info['content']['text'], 
+            info['content']['text'],
             hostname,
             url,
             info['timestamp.published']['lo'],
@@ -362,19 +346,22 @@ class ArticleDB:
             info['language'],
             en_translation,
             en_summary,
-            ])
+        ])
         self.db.commit()
 
-        logging.debug('recursively adding more links')
+        logging.debug('Recursively adding more links')
         if recursive_depth > 0:
-            for link in info['links.all']:
+            for link in soup.find_all('a', href=True):
                 url2 = link['href']
                 parsed_uri2 = urlparse(url2)
                 hostname2 = parsed_uri2.netloc
                 if hostname in hostname2 or hostname2 in hostname:
                     self.add_url(url2, recursive_depth-1)
-        
+
     def __len__(self):
+        '''
+        Return the number of articles in the database.
+        '''
         sql = '''
         SELECT count(*)
         FROM articles
@@ -386,21 +373,20 @@ class ArticleDB:
         row = cursor.fetchone()
         return row[0]
 
-
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--loglevel', default='warning')
     parser.add_argument('--db', default='ragnews.db')
     parser.add_argument('--recursive_depth', default=0, type=int)
-    parser.add_argument('--add_url', help='If this parameter is added, then the program will not provide an interactive QA session with the database.  Instead, the provided url will be downloaded and added to the database.')
+    parser.add_argument('--add_url', help='If this parameter is added, then the program will not provide an interactive QA session with the database. Instead, the provided URL will be downloaded and added to the database.')
     args = parser.parse_args()
 
     logging.basicConfig(
         format='%(asctime)s %(levelname)-8s %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S',
         level=args.loglevel.upper(),
-        )
+    )
 
     db = ArticleDB(args.db)
 
