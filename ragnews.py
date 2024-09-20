@@ -97,10 +97,9 @@ def extract_keywords(text, seed=None):
     For example, if the question is: 'What is Trump's immigration policy regarding illegal Mexican immigrants?', an acceptable output would be: Trump Mexico immigration policy.
     Another example, if the question is: 'Who is the current democratic presidential nominee?' , an acceptable output would be: Democratic nominee 2024.
     """
-    #"Do not answer the question. Solely provide a string of as few of the top keywords relevant to the topic that would benefit a search for articles online relating to the question. Separate each keyword with a space. For example, Who is the current democratic presidential nominee? An excellent output would be: Democratic nominee 2024 election Biden Harris politics"
     keywords = run_llm(system, text, seed=seed)
-    return keywords
-    #return keywords_fixer(keywords)
+    #return keywords
+    return keywords_fixer(keywords)
 
 
 ################################################################################
@@ -244,20 +243,6 @@ class ArticleDB:
         Lowering the value of the timebias_alpha parameter will result in the time becoming more influential.
         The final ranking is computed by the FTS5 rank * timebias_alpha / (days since article publication + timebias_alpha).
         '''
-        
-        # FIXME:
-        # Implement this function.
-        # You do not need to concern yourself with the timebias_alpha parameter.
-        # (Although I encourage you to try!)
-        #
-        # HINT:
-        # The only thing my solution does is pass a SELECT statement to the sqlite3 database.
-        # The SELECT statement will need to use sqlite3's FTS5 syntax for full text search.
-        # If you need to review how to coordinate sqlite3 and python,
-        # there is an example in the __len__ method below.
-        # The details of the SELECT statement will be different
-        # (because the functions collect different information)
-        # but the outline of the python code is the same.
         
         db = sqlite3.connect('ragnews.db')
         cursor = db.cursor()
