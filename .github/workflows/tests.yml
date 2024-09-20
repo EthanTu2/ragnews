@@ -7,17 +7,37 @@ on:
     branches: ['*']
 
 jobs:
-  test-python38:
+  test-python311:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v2
-      - name: Set up Python 3.8
+      - name: Set up Python 3.11
         uses: actions/setup-python@v2
         with:
-          python-version: 3.8
+          python-version: 3.11
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - name: Run doctests
+        run: |
+          python3 -m doctest ragnews.py
+
+  test-python310:
+    runs-on: ubuntu-latest
+    needs: test-python311  # Run after Python 3.11 tests
+    timeout-minutes: 30
+    env:
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.10
       - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip
@@ -28,16 +48,36 @@ jobs:
 
   test-python39:
     runs-on: ubuntu-latest
-    needs: test-python38  # Ensures Python 3.8 tests finish first
+    needs: test-python310  # Run after Python 3.10 tests
+    timeout-minutes: 30
     env:
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v2
       - name: Set up Python 3.9
         uses: actions/setup-python@v2
         with:
           python-version: 3.9
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - name: Run doctests
+        run: |
+          python3 -m doctest ragnews.py
+
+  test-python38:
+    runs-on: ubuntu-latest
+    needs: test-python39  # Run after Python 3.9 tests
+    timeout-minutes: 30
+    env:
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Python 3.8
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.8
       - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip
