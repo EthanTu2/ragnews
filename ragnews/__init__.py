@@ -18,6 +18,9 @@ from groq import Groq
 import os
 import requests
 from bs4 import BeautifulSoup
+from langdetect import detect, DetectorFactory
+from langdetect.lang_detect_exception import LangDetectException
+import time
 
 ################################################################################
 # LLM functions
@@ -27,36 +30,54 @@ client = Groq(
     api_key=os.environ.get("GROQ_API_KEY"),
 )
 
+query_cache = {}
 
-def run_llm(system, user, model='llama3-8b-8192', seed=None):
+def run_llm(system, user, model='llama-3.1-8b-instant', seed=None, max_retries=5):
     '''
-    This is a helper function for all the uses of LLMs in this file.
+    This is a helper function for all LLM-related tasks in the file. Implements retry logic in case of rate limit errors.
     '''
-    chat_completion = client.chat.completions.create(
-        messages=[
-            {
-                'role': 'system',
-                'content': system,
-            },
-            {
-                "role": "user",
-                "content": user,
-            }
-        ],
-        model=model,
-        seed=seed,
-    )
-    return chat_completion.choices[0].message.content
+    cache_key = f"{system}:{user}"
+    if cache_key in query_cache:
+        return query_cache[cache_key]
+    
+    retry_count = 0
+    retry_after = min(60 * (2 ** retry_count), 300)
+    while retry_count < max_retries:
+        try:
+            chat_completion = client.chat.completions.create(
+                messages=[
+                    {'role': 'system', 'content': system},
+                    {'role': 'user', 'content': user},
+                ],
+                model=model,
+                seed=seed,
+            )
+            response = chat_completion.choices[0].message.content
+            query_cache[cache_key] = response  # Cache the response
+            return response
 
+        except groq.RateLimitError as e:
+            # Improved error handling for rate limit
+            logging.warning(f"Rate limit exceeded. Retrying after {retry_after} seconds...")
+            time.sleep(retry_after)
+            retry_count += 1
+        except Exception as e:
+            logging.error(f"An error occurred: {str(e)}. Retrying... ({retry_count+1}/{max_retries})")
+            retry_count += 1
+            time.sleep(5)  # Wait for 5 seconds before retrying
+
+    raise RuntimeError(f"Max retries exceeded for model: {model}")
 
 def summarize_text(text, seed=None):
     system = 'Summarize the input text below. Limit the summary to 1 paragraph. Use an advanced reading level similar to the input text, and ensure that all people, places, and other proper names and dates are included in the summary. The summary should be in English. Only include the summary.'
     return run_llm(system, text, seed=seed)
 
-
 def translate_text(text):
-    system = 'You are a professional translator working for the United Nations. The following document is an important news article that needs to be translated into English. Provide a professional translation.'
-    return run_llm(system, text)
+    # Only translate if the text isn't already in English
+    if detect(text) != "en":
+        system = 'You are a professional translator working for the United Nations. The following document is an important news article that needs to be translated into English. Provide a professional translation.'
+        return run_llm(system, text)
+    return text
 
 def keywords_fixer(text, seed=None):
     if not isinstance(text, str):
@@ -130,15 +151,20 @@ def _catch_errors(func):
 # rag
 ################################################################################
 
-def rag(text, db):
+def rag(text, db, keywords_text=None):
     '''
     This function uses retrieval augmented generation (RAG) to generate an LLM response to the input text.
     The db argument should be an instance of the `ArticleDB` class that contains the relevant documents to use.
     '''
+    if keywords_text is None:
+        keywords_text = text
+
+    pattern = r"[\[\]\(\)'\.\",]"
     keywords = extract_keywords(text)
-    sanitized_keywords = keywords.replace("'", "''")
+    sanitized_keywords = re.sub(pattern, "", keywords)
     print(f"Keywords: {keywords}")  # Debug the keywords
-    articles = db.find_articles(sanitized_keywords, limit=10, timebias_alpha=1)
+    articles = db.find_articles(sanitized_keywords, limit=3, timebias_alpha=1)
+    assert(len(articles) > 0)
     print(f"Retrieved {len(articles)} articles")
     
     system = """You are a professional news analyst tasked with answering questions based solely on the provided articles. 
@@ -153,7 +179,7 @@ def rag(text, db):
     string_articles = ""
     for article in articles:
         if article['text']:
-            string_articles += (f"Title: {article['title']}\nContent: {article['text'][:2000]}\n\n")
+            string_articles += (f"Title: {article['title']}\nContent: {article['text'][:500]}\n\n")
         else:
             logging.warning(f"Article with title '{article['title']}' has no text content.")
     if not string_articles:
@@ -194,10 +220,15 @@ class ArticleDB:
     ]
 
     def __init__(self, filename=':memory:'):
-        self.db = sqlite3.connect(filename)
+        self.db = sqlite3.connect(filename, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.logger = logging
         self._create_schema()
+
+    def close(self):
+        '''Close the database connection gracefully.'''
+        if self.db:
+            self.db.close()
 
     def _create_schema(self):
         '''
@@ -227,40 +258,44 @@ class ArticleDB:
         except sqlite3.OperationalError:
             self.logger.debug('CREATE TABLE failed')
 
-    def find_articles(self, query, limit=10, timebias_alpha=1):
+    def find_articles(self, query, limit=3, timebias_alpha=1):
         '''
         Return a list of articles in the database that match the specified query.
         '''
         cursor = self.db.cursor()
 
-        sanitized_query = query.replace("'", "''")  # Escapes single quotes
+        #pattern = r"[\[\]\(\)'\"]"
+        #sanitized_query = re.sub(pattern, "", query)
+        sanitized_query = query
 
         sql = '''
-        SELECT rowid, title, text, publish_date, hostname, url, bm25(articles) AS rank        FROM articles
+        SELECT rowid, title, text, publish_date, hostname, url, bm25(articles) AS rank
+        FROM articles
         WHERE articles MATCH ?
         ORDER BY rank
         LIMIT ?;
         '''
-        
+        #testing!
+        print("sql =", sql)
+        print("\nquery =", sanitized_query)
+        print("\nlimit =", limit)
+
         articles = []
-        try:
-            cursor.execute(sql, (sanitized_query, limit))
-            rows = cursor.fetchall()
-            for row in rows:
-                articles.append({
-                    'rowid': row['rowid'],
-                    'rank': row['rank'],
-                    'title': row['title'],
-                    'publish_date': row['publish_date'],
-                    'hostname': row['hostname'],
-                    'url': row['url'],
-                    'staleness': None,  # Placeholder for staleness
-                    'timebias': timebias_alpha,  # Placeholder for timebias
-                    'en_summary': None,  # Placeholder for en_summary
-                    'text': row['text']
-                })
-        except sqlite3.OperationalError as e:
-            print(f"SQLite error: {e}")
+        cursor.execute(sql, (sanitized_query, limit))
+        rows = cursor.fetchall()
+        for row in rows:
+            articles.append({
+                'rowid': row['rowid'],
+                'rank': row['rank'],
+                'title': row['title'],
+                'publish_date': row['publish_date'],
+                'hostname': row['hostname'],
+                'url': row['url'],
+                'staleness': None,  # Placeholder for staleness
+                'timebias': timebias_alpha,  # Placeholder for timebias
+                'en_summary': None,  # Placeholder for en_summary
+                'text': row['text']
+            })
         return articles
 
     @_catch_errors
@@ -382,21 +417,19 @@ if __name__ == '__main__':
     parser.add_argument('--add_url', help='If this parameter is added, then the program will not provide an interactive QA session with the database. Instead, the provided URL will be downloaded and added to the database.')
     args = parser.parse_args()
 
-    logging.basicConfig(
-        format='%(asctime)s %(levelname)-8s %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S',
-        level=args.loglevel.upper(),
-    )
+    
 
     db = ArticleDB(args.db)
+    try:
+        if args.add_url:
+          db.add_url(args.add_url, recursive_depth=args.recursive_depth, allow_dupes=True)
 
-    if args.add_url:
-        db.add_url(args.add_url, recursive_depth=args.recursive_depth, allow_dupes=True)
-
-    else:
-        import readline
-        while True:
-            text = input('ragnews> ')
-            if len(text.strip()) > 0:
-                output = rag(text, db)
-                print(output)
+        else:
+            import readline
+            while True:
+                text = input('ragnews> ')
+                if len(text.strip()) > 0:
+                    output = rag(text, db)
+                    print(output)
+    finally:
+        db.close()
