@@ -38,7 +38,7 @@ class RAGClassifier:
             textprompt = f'''
             You are a statistician tasked with predicting masked tokens.
             Do not provide any explanations or descriptions.
-            For each masked token, provide a one word prediction in string format. 
+            For each masked token, provide a one word prediction in string format.
             Your response must contain exactly {n} predictions, one for each masked token, and nothing else.
             The valid prediction values are: {self.valid_labels}. 
             If a prediction is not among the valid prediction values, do not include it in the output.
@@ -54,7 +54,23 @@ class RAGClassifier:
             individual_predictions = re.split(r'[,\s\n]+', output.strip())
 
             # Ensure that we only append the first n predictions
-            print("\n\n\nnumber of tokens = ", n, "\n\n\n")
+            print("\n\n\nnumber of tokens = ", n, "\n\n\n", "predicted tokens = ", individual_predictions[:n], "\n\n\n")
+
+            # Ensure that predictions correctly match one of the valid labels
+            for j in range(len(individual_predictions[:n])):
+                match = False
+                for label in self.valid_labels:
+                    if individual_predictions[j] == label:
+                        match = True
+                # If no matches are found, truncate the individual prediction so it matches a valid label
+                if (not match):
+                        i = 0
+                        for letter in individual_predictions[j]:
+                            i +=1
+                            if individual_predictions[j][:i] in self.valid_labels:
+                                break
+                        individual_predictions[j] = individual_predictions[j][:i]
+            
             predictions.extend(individual_predictions[:n])  # Append each prediction individually
         
         return predictions
