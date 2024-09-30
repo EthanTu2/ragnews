@@ -30,6 +30,7 @@ class RAGClassifier:
         # Adjust the pattern to match the masked token format like [MASK0], [MASK1], etc.
         mask_pattern = r"\[MASK\d+\]"  # This pattern matches [MASK0], [MASK1], etc.
 
+        line = 0
         for masked_text in X:
             # Find all unique masked tokens in the text using a set
             unique_masks = set(re.findall(mask_pattern, masked_text))
@@ -72,7 +73,8 @@ class RAGClassifier:
                         individual_predictions[j] = individual_predictions[j][:i]
             
             predictions.extend(individual_predictions[:n])  # Append each prediction individually
-        print("\nOn line: ", len(predictions), "/", len(X), "\n")
+        line+=1
+        print("\nOn line: ", line, "/", len(X), "\n")
         return predictions
 
 

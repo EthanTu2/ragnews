@@ -166,7 +166,7 @@ def rag(text, db, keywords_text=None):
     keywords = extract_keywords(text)
     sanitized_keywords = re.sub(pattern, "", keywords)
     print(f"Keywords: {keywords}")  # Debug the keywords
-    articles = db.find_articles(sanitized_keywords, limit=3, timebias_alpha=1)
+    articles = db.find_articles(sanitized_keywords, limit=10, timebias_alpha=1)
     assert(len(articles) > 0)
     print(f"Retrieved {len(articles)} articles")
     
@@ -182,7 +182,7 @@ def rag(text, db, keywords_text=None):
     string_articles = ""
     for article in articles:
         if article['text']:
-            string_articles += (f"Title: {article['title']}\nContent: {article['text'][:1000]}\n\n")
+            string_articles += (f"Title: {article['title']}\nContent: {article['text'][:500]}\n\n")
         else:
             logging.warning(f"Article with title '{article['title']}' has no text content.")
     if not string_articles:
