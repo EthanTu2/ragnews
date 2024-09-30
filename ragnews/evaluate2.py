@@ -73,8 +73,8 @@ class RAGClassifier:
                         individual_predictions[j] = individual_predictions[j][:i]
             
             predictions.extend(individual_predictions[:n])  # Append each prediction individually
-        line+=1
-        print("\nOn line: ", line, "/", len(X), "\n")
+            line+=1
+            print("\nOn line: ", line, "/", len(X), "\n")
         return predictions
 
 

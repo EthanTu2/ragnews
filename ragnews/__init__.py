@@ -122,8 +122,11 @@ def extract_keywords(text, seed=None):
     Another example, if the question is: 'Who is the current democratic presidential nominee?' , an acceptable output would be: Democratic nominee 2024.
     """
     keywords = run_llm(system, text, seed=seed)
+    words = keywords.split()
+    unique_words = list(dict.fromkeys(words))
+    unique_keywords = " ".join(unique_words)
     #return keywords_fixer(keywords)
-    return keywords
+    return unique_keywords
 
 
 ################################################################################

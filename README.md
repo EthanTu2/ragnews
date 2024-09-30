@@ -1,4 +1,4 @@
-# RAGNews ![](https://github.com/EthanTu2/ragnews/workflows/tests/badge.svg?dummy=timestamp)
+# RAGNews
 
 ## Overview
 
@@ -9,6 +9,20 @@
 - Retrieval-Augmented Generation (RAG): Efficiently fetches relevant articles to improve response accuracy.
 - News Integration: Processes user queries using a dynamic database of news articles.
 - Groq API Powered: Leverages Groq models for natural language processing.
+
+## RAGNews Evaluation Branch
+
+In this branch, we create an evaluator python file to calculate an accuracy percentage for our `ragnews.py`. We do this by utilizing masked tokens and asking the model to predict which politician matches the context of the sentence. The number of correct predictions over the true token values is our accuracy percentage. 
+
+## The Objective
+
+We were tasked with adjusting all of the "hyperparameters" so that evaluate.py gives at least 70% accuracy on the file hairy-trumpet/data/wiki__page=2024_United_States_presidential_election,recursive_depth=0__dpsize=paragraph,transformations=[canonicalize, group, rmtitles, split].
+
+Here is a screenshot documenting my accuracy score:
+
+![Accuracy score](./img/888B28A8-5649-441C-A71B-73E0C3F4B6A4.jpeg)
+
+
 
 ## Getting Started
 
