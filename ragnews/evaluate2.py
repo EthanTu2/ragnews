@@ -54,7 +54,7 @@ class RAGClassifier:
             individual_predictions = re.split(r'[,\s\n]+', output.strip())
 
             # Ensure that we only append the first n predictions
-            print("\n\n\nnumber of tokens = ", n, "\n\n\n", "predicted tokens = ", individual_predictions[:n], "\n\n\n")
+            print("\n\n\nnumber of tokens = ", n, "\npredicted tokens = ", individual_predictions[:n], "\n\n\n")
 
             # Ensure that predictions correctly match one of the valid labels
             for j in range(len(individual_predictions[:n])):
@@ -72,7 +72,7 @@ class RAGClassifier:
                         individual_predictions[j] = individual_predictions[j][:i]
             
             predictions.extend(individual_predictions[:n])  # Append each prediction individually
-        
+        print("\nOn line: ", len(predictions), "/", len(X), "\n")
         return predictions
 
 
@@ -149,7 +149,7 @@ def main(filename):
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("Usage: python evaluate.py ./hairy-trumpet")
+        print("Usage: python3 -i ragnews/evaluate2.py ./hairy-trumpet/data/<wikipage>")
         sys.exit(1)
 
     data_file_path = sys.argv[1]
