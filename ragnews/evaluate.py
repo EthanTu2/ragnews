@@ -3,6 +3,7 @@ import ragnews
 import json
 import logging
 import re
+import time
 from sklearn.metrics import accuracy_score
 from sklearn.base import BaseEstimator, ClassifierMixin
 
@@ -14,24 +15,24 @@ logging.basicConfig(
 )
 
 class RAGClassifier:
-    def __init__(self, valid_labels=None, db_path='ragnews.db'):
+    def __init__(self, valid_labels=None, db_path='ragnews.db', batch_size=5, request_delay=2):
         """
         Initializes the classifier with a list of valid labels and a preloaded ArticleDB instance.
         """
         self.valid_labels = valid_labels if valid_labels is not None else []
         self.db = ragnews.ArticleDB(db_path)  # Load DB once for reuse
+        self.batch_size = batch_size  # Set the batch size for prediction
+        self.request_delay = request_delay
 
-    def predict(self, X):
+    def predict_batch(self, batch_X):
         """
-        Predicts the masked tokens based on the input text using the RAG system.
+        Predicts the masked tokens for a batch of input texts.
         """
-        predictions = []
+        batch_predictions = []
         
-        # Adjust the pattern to match the masked token format like [MASK0], [MASK1], etc.
-        mask_pattern = r"\[MASK\d+\]"  # This pattern matches [MASK0], [MASK1], etc.
+        mask_pattern = r"\[MASK\d+\]"
 
-        for masked_text in X:
-            # Find all unique masked tokens in the text using a set
+        for masked_text in batch_X:
             unique_masks = set(re.findall(mask_pattern, masked_text))
             n = len(unique_masks)
 
@@ -50,28 +51,41 @@ class RAGClassifier:
             except AssertionError:
                 output = "article not found"
 
-            # Split the output by whitespace or commas, and filter out empty entries
             individual_predictions = re.split(r'[,\s\n]+', output.strip())
+            batch_predictions.append(individual_predictions[:n])  # Append batch results
 
-            # Ensure that we only append the first n predictions
-            print("\n\n\nnumber of tokens = ", n, "\n\n\n", "predicted tokens = ", individual_predictions[:n], "\n\n\n")
+            time.sleep(self.request_delay)
 
-            # Ensure that predictions correctly match one of the valid labels
-            for j in range(len(individual_predictions[:n])):
-                match = False
-                for label in self.valid_labels:
-                    if individual_predictions[j] == label:
-                        match = True
-                # If no matches are found, truncate the individual prediction so it matches a valid label
-                if (not match):
+        return batch_predictions
+
+
+    def predict(self, X):
+        """
+        Predicts the masked tokens for all input texts using batching.
+        """
+        predictions = []
+        
+        # Process inputs in batches
+        for i in range(0, len(X), self.batch_size):
+            batch_X = X[i:i + self.batch_size]
+            batch_predictions = self.predict_batch(batch_X)
+            
+            for individual_predictions in batch_predictions:
+                # Validate and process predictions
+                for j in range(len(individual_predictions)):
+                    match = False
+                    for label in self.valid_labels:
+                        if individual_predictions[j] == label:
+                            match = True
+                    if not match:
                         i = 0
                         for letter in individual_predictions[j]:
-                            i +=1
+                            i += 1
                             if individual_predictions[j][:i] in self.valid_labels:
                                 break
                         individual_predictions[j] = individual_predictions[j][:i]
-            
-            predictions.extend(individual_predictions[:n])  # Append each prediction individually
+                
+                predictions.extend(individual_predictions)  # Append the batch predictions
         
         return predictions
 

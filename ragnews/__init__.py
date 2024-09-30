@@ -70,7 +70,9 @@ def run_llm(system, user, model='llama-3.1-8b-instant', seed=None, max_retries=5
     raise RuntimeError(f"Max retries exceeded for model: {model}")
 
 def summarize_text(text, seed=None):
-    system = 'Summarize the input text below. Limit the summary to 1 paragraph. Use an advanced reading level similar to the input text, and ensure that all people, places, and other proper names and dates are included in the summary. The summary should be in English. Only include the summary.'
+    if len(text) < 500:
+        return text
+    system = 'Summarize the input text below. Limit the summary to one concise paragraph that would benefit masked token predictions. Use an advanced reading level similar to the input text, and ensure that all people, places, and other proper names and dates are included in the summary. Only include the summary.'
     return run_llm(system, text, seed=seed)
 
 def translate_text(text):
@@ -164,7 +166,7 @@ def rag(text, db, keywords_text=None):
     keywords = extract_keywords(text)
     sanitized_keywords = re.sub(pattern, "", keywords)
     print(f"Keywords: {keywords}")  # Debug the keywords
-    articles = db.find_articles(sanitized_keywords, limit=2, timebias_alpha=1)
+    articles = db.find_articles(sanitized_keywords, limit=5, timebias_alpha=1)
     assert(len(articles) > 0)
     print(f"Retrieved {len(articles)} articles")
     
@@ -180,7 +182,7 @@ def rag(text, db, keywords_text=None):
     string_articles = ""
     for article in articles:
         if article['text']:
-            string_articles += (f"Title: {article['title']}\nContent: {article['text'][:1000]}\n\n")
+            string_articles += (f"Title: {article['title']}\nContent: {article['text'][:500]}\n\n")
         else:
             logging.warning(f"Article with title '{article['title']}' has no text content.")
     if not string_articles:
@@ -259,7 +261,7 @@ class ArticleDB:
         except sqlite3.OperationalError:
             self.logger.debug('CREATE TABLE failed')
 
-    def find_articles(self, query, limit=5, timebias_alpha=1):
+    def find_articles(self, query, limit=3, timebias_alpha=1):
         '''
         Return a list of articles in the database that match the specified query.
         '''
@@ -277,9 +279,9 @@ class ArticleDB:
         LIMIT ?;
         '''
         #testing!
-        print("sql =", sql)
+        #print("sql =", sql)
         print("\nquery =", sanitized_query)
-        print("\nlimit =", limit)
+        #print("\nlimit =", limit)
 
         articles = []
         cursor.execute(sql, (sanitized_query, limit))
