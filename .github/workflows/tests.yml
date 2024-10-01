@@ -19,31 +19,38 @@ jobs:
         uses: actions/checkout@v3
         with:
           submodules: true
-          fetch-depth: 0 
+          fetch-depth: 0
+
       - name: Set up Python ${{ matrix.python }}
         uses: actions/setup-python@v2
         with:
           python-version: ${{ matrix.python }}
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          sudo apt-get update && sudo apt-get install -y expect # Install expect
+          sudo apt-get update && sudo apt-get install -y expect  # Install expect for advanced scripting
+
       - name: Run Pylint
         run: |
           pip install pylint
           pylint ragnews/__init__.py
           pylint ragnews/evaluate.py
+
       - name: Run evaluation script
+        id: run_evaluation  # Add id for referencing output
         run: |
           export PYTHONPATH=.
           accuracy=$(python3 ragnews/evaluate.py --path hairy-trumpet/data/'wiki__page=2024_United_States_presidential_election,recursive_depth=0__dpsize=paragraph,transformations=[canonicalize, group, rmtitles, split]')
           echo "Accuracy: $accuracy"
           echo "::set-output name=accuracy::$accuracy"
+
       - name: Verify accuracy
         run: |
           accuracy=${{ steps.run_evaluation.outputs.accuracy }}
           echo "Extracted accuracy: $accuracy"
+          # Using bc for floating point comparison
           if (( $(echo "$accuracy < 0.7" | bc -l) )); then
             echo "Accuracy is less than 0.7. Test failed."
             exit 1
