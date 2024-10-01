@@ -55,7 +55,7 @@ class RAGClassifier:
             individual_predictions = re.split(r'[,\s\n]+', output.strip())
 
             # Ensure that we only append the first n predictions
-            print("\n\n\nnumber of tokens = ", n, "\npredicted tokens = ", individual_predictions[:n], "\n\n\n")
+            print("\nnumber of tokens = ", n, "\npredicted tokens = ", individual_predictions[:n], "\n")
 
             # Ensure that predictions correctly match one of the valid labels
             for j in range(len(individual_predictions[:n])):

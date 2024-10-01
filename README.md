@@ -1,14 +1,68 @@
-# RAGNews
+# RAG News
 
 ## Overview
 
-`ragnews` is a Python-based Question & Answer (Q&A) system that integrates with the Groq API and leverages Retrieval-Augmented Generation (RAG). This system retrieves relevant news articles from a user-provided database to generate accurate, real-time responses to user queries. RAGNews is designed for users looking to enhance the capabilities of Groq models by pulling from up-to-date news sources.
+`ragnews` is a Python-based question and answer system built on the Groq
+API. It extends the functionality of the Groq models by augmenting user
+prompts using RAG. The application fetches and processes news articles
+from a user-provided database, then uses them to answer user queries
+with a particular focus on providing accurate answers to timely
+questions.
 
-## Key Features
+## Getting Started
 
-- Retrieval-Augmented Generation (RAG): Efficiently fetches relevant articles to improve response accuracy.
-- News Integration: Processes user queries using a dynamic database of news articles.
-- Groq API Powered: Leverages Groq models for natural language processing.
+To get started with `ragnews`, follow these steps to set up your
+development environment and run the application:
+
+### Requirements
+
+- Python 3.9
+
+### Setup Instructions
+
+1. **Add the deadsnakes PPA and install Python 3.9:**
+
+```
+$ sudo add-apt-repository ppa:deadsnakes/ppa
+$ sudo apt update
+$ sudo apt install python3.9 python3.9-venv python3.9-dev
+```
+
+2. **Create and activate a virtual environment:**
+
+```
+$ python3.9 -m venv venv
+$ . ./venv/bin/activate
+```
+
+3. **Install the required Python packages:**
+
+```
+$ pip3 install -r requirements.txt
+```
+
+4. **Configure environment variables:**
+
+    - Edit the `.env` file to include your Groq API key.
+    - Export the variables:
+
+        ```
+        $ export $(cat .env)
+        $ export PYTHONPATH=.
+        ```
+
+### Example Usage
+
+```
+$ python3 ragnews/__init__.py --db=ragnews/ragnews.db 
+ragnews> Who are the major party presidential nominees?
+According to the article, the major party presidential nominees are Donald Trump and Kamala Harris.
+```
+
+```
+$ python3 ragnews/evaluate.py --path hairy-trumpet/data/'wiki__page=2024_United_States_presidential_election,recursive_depth=0__dpsize=paragraph,transformations=[canonicalize, group, rmtitles, split]'
+0.8188976377952756
+```
 
 ## RAGNews Evaluation Branch
 
@@ -18,70 +72,6 @@ In this branch, we create an evaluator python file to calculate an accuracy perc
 
 We were tasked with adjusting all of the "hyperparameters" so that evaluate.py gives at least 70% accuracy on the file hairy-trumpet/data/wiki__page=2024_United_States_presidential_election,recursive_depth=0__dpsize=paragraph,transformations=[canonicalize, group, rmtitles, split].
 
-Here is a screenshot documenting my accuracy score:
+Here is an example screenshot documenting my accuracy score for a smaller testing .json file:
 
 ![Accuracy score](./img/888B28A8-5649-441C-A71B-73E0C3F4B6A4.jpeg)
-
-
-
-## Getting Started
-
-# Prerequisites
-
-Before proceeding, check that you have the following installed:
-
-- Python 3.8 or 3.9
-- A Groq API key (instructions below)
-
-# Installation
-
-To get started with `ragnews`, follow these steps to set up your
-development environment and run the application:
-
-1. **Clone the repository:**
-```
-$ git clone https://github.com/EthanTu2/ragnews.git
-$ cd ragnews
-```
-
-2. **Create a virtual environment:**
-
-```
-$ python3.9 -m venv venv
-$ source venv/bin/activate
-```
-
-3. **Install the necessary Python packages:**
-
-```
-$ pip3 install -r requirements.txt
-```
-
-4. **Set up a GROQ API key:**
-    - Create an API key at https://groq.com/
-    - Create a `.env` file in the project root directory and add your Groq API key.
-    
-    ```
-    GROQ_API_KEY=your_api_key_here
-    ```
-
-    - Export the environmental variables:
-
-        ```
-        $ export $(cat .env)
-        ```
-
-## Running the Application
-Once your environment is set up, you can start RAGNews:
-```
-$ python3 ragnews.py
-```
-
-### Example Usage
-After starting the application, you can interact with it via the command line interface:
-
-```
-$ python3 ragnews.py 
-ragnews> What is the current democratic presidential nominee?
-The current Democratic presidential nominee is Kamala Harris.
-```
