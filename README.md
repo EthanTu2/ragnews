@@ -1,4 +1,5 @@
 # RAG News
+![](https://github.com/EthanTu2/ragnews/workflows/tests/badge.svg?branch=evaluate)
 
 ## Overview
 

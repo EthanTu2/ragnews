@@ -151,7 +151,7 @@ def main(filename):
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("Usage: python3 -i ragnews/evaluate2.py ./hairy-trumpet/data/<wikipage>")
+        print("Usage: python3 -i ragnews/evaluate.py ./hairy-trumpet/data/<wikipage>")
         sys.exit(1)
 
     data_file_path = sys.argv[1]
