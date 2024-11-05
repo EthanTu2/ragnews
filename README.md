@@ -72,7 +72,3 @@ In this branch, we create an evaluator python file to calculate an accuracy perc
 ## The Objective
 
 We were tasked with adjusting all of the "hyperparameters" so that evaluate.py gives at least 70% accuracy on the file hairy-trumpet/data/wiki__page=2024_United_States_presidential_election,recursive_depth=0__dpsize=paragraph,transformations=[canonicalize, group, rmtitles, split].
-
-Here is an example screenshot documenting my accuracy score for a smaller testing .json file:
-
-![Accuracy score](./img/888B28A8-5649-441C-A71B-73E0C3F4B6A4.jpeg)
